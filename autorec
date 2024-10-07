@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Audio Recorder</title>
+</head>
+<body>
+    <h1>Record Audio and Save to Google Drive</h1>
+    <button id="startRecord">Start Recording</button>
+    <button id="stopRecord" disabled>Stop Recording</button>
+    <audio id="audioPlayer" controls></audio>
+    <button id="upload" disabled>Upload to Google Drive</button>
+
+    <script>
+        let mediaRecorder;
+        let audioChunks = [];
+        let audioBlob;
+
+        // Start recording
+        document.getElementById('startRecord').addEventListener('click', async () => {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            mediaRecorder = new MediaRecorder(stream);
+
+            mediaRecorder.start();
+            document.getElementById('stopRecord').disabled = false;
+            document.getElementById('startRecord').disabled = true;
+
+            mediaRecorder.ondataavailable = event => {
+                audioChunks.push(event.data);
+            };
+
+            mediaRecorder.onstop = () => {
+                audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+                const audioUrl = URL.createObjectURL(audioBlob);
+                const audioPlayer = document.getElementById('audioPlayer');
+                audioPlayer.src = audioUrl;
+
+                document.getElementById('upload').disabled = false;
+                audioChunks = [];
+            };
+        });
+
+        // Stop recording
+        document.getElementById('stopRecord').addEventListener('click', () => {
+            mediaRecorder.stop();
+            document.getElementById('stopRecord').disabled = true;
+            document.getElementById('startRecord').disabled = false;
+        });
+
+        // Google Drive API upload logic
+        document.getElementById('upload').addEventListener('click', async () => {
+            const clientId = 'YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com';
+            const scopes = ['https://www.googleapis.com/auth/drive.file'];
+
+            // Initialize the OAuth2 library
+            const token = await authenticateGoogleDrive(clientId, scopes);
+            if (token) {
+                uploadToDrive(audioBlob, token);
+            }
+        });
+
+        // Authenticate with Google Drive
+        function authenticateGoogleDrive(clientId, scopes) {
+            return new Promise((resolve, reject) => {
+                gapi.load('auth2', () => {
+                    gapi.auth2.init({
+                        client_id: clientId,
+                        scope: scopes.join(' '),
+                    }).signIn().then(googleUser => {
+                        const token = googleUser.getAuthResponse().access_token;
+                        resolve(token);
+                    }).catch(error => {
+                        reject(error);
+                    });
+                });
+            });
+        }
+
+        // Upload to Google Drive
+        function uploadToDrive(file, token) {
+            const formData = new FormData();
+            formData.append('file', file, 'audio.webm');
+
+            fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
+                method: 'POST',
+                headers: new Headers({
+                    'Authorization': 'Bearer ' + token,
+                }),
+                body: formData,
+            })
+            .then(response => response.json())
+            .then(data => {
+                console.log('File uploaded successfully', data);
+                alert('File uploaded successfully!');
+            })
+            .catch(error => {
+                console.error('Error uploading file:', error);
+            });
+        }
+    </script>
+
+    <script src="https://apis.google.com/js/api.js"></script>
+</body>
+</html>
